@@ -23,6 +23,6 @@ resources:
     type: oci-image
     description: upstream docker image for mongodb
     upstream-source: 'docbthomas/prometheus-tester:latest'
-requires:
-  monitoring:
+provides:
+  metrics-endpoint:
     interface: prometheus_scrape

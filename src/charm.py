@@ -11,7 +11,7 @@ from ops.main import main
 from ops.framework import StoredState
 from ops.model import ActiveStatus, ModelError
 from ops.pebble import ConnectionError
-from charms.prometheus_k8s.v0.prometheus import PrometheusConsumer
+from charms.prometheus_k8s.v0.prometheus import MetricsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,9 @@ class PrometheusTesterCharm(CharmBase):
                 ]
             }
         ]
-        self.prometheus = PrometheusConsumer(self, "monitoring", self._consumes,
-                                             self.on.prometheus_tester_pebble_ready,
-                                             jobs=jobs)
+        self.prometheus = MetricsProvider(self, "metrics-endpoint",
+                                          self.on.prometheus_tester_pebble_ready,
+                                          jobs=jobs)
         self.framework.observe(self.on.prometheus_tester_pebble_ready,
                                self._on_prometheus_tester_pebble_ready)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
@@ -78,7 +78,7 @@ class PrometheusTesterCharm(CharmBase):
         self.unit.status = ActiveStatus()
 
     def _on_update_status(self, event):
-        rel = self.framework.model.get_relation("monitoring")
+        rel = self.framework.model.get_relation("metrics-endpoint")
         if rel and not self._stored.monitoring_enabled:
             binding = self.model.get_binding(rel)
             bind_address = str(binding.network.bind_address)
@@ -102,10 +102,6 @@ class PrometheusTesterCharm(CharmBase):
             }
         }
         return layer
-
-    @property
-    def _consumes(self):
-        return {"prometheus": ">=2.0"}
 
 
 if __name__ == "__main__":
