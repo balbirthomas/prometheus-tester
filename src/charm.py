@@ -11,7 +11,7 @@ from ops.main import main
 from ops.framework import StoredState
 from ops.model import ActiveStatus, ModelError
 from ops.pebble import ConnectionError
-from charms.prometheus_k8s.v0.prometheus import MetricsProvider
+from charms.prometheus_k8s.v0.prometheus import MetricsEndpointProvider
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class PrometheusTesterCharm(CharmBase):
                 ]
             }
         ]
-        self.prometheus = MetricsProvider(self, "metrics-endpoint",
+        self.prometheus = MetricsEndpointProvider(self, "metrics-endpoint",
                                           self.on.prometheus_tester_pebble_ready,
                                           jobs=jobs)
         self.framework.observe(self.on.prometheus_tester_pebble_ready,
