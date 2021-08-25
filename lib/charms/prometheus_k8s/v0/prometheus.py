@@ -199,7 +199,7 @@ For example a Prometheus charm may instantiate the
         ...
 
 2. A Prometheus charm also needs to respond to the
-`TargetsChanged` event of the `MetricsEndpointConsumer` by adding itself as
+`TargetsChangedEvent` event of the `MetricsEndpointConsumer` by adding itself as
 and observer for these events, as in
 
     self.framework.observe(
@@ -207,7 +207,7 @@ and observer for these events, as in
         self._on_scrape_targets_changed,
     )
 
-In responding to the `TargetsChanged` event the Prometheus
+In responding to the `TargetsChangedEvent` event the Prometheus
 charm must update the Prometheus configuration so that any new scrape
 targets are added and/or old ones removed from the list of scraped
 endpoints. For this purpose the `MetricsEndpointConsumer` object
@@ -307,7 +307,16 @@ LIBPATCH = 5
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_scrape_configuration(job):
+def _sanitize_scrape_configuration(job) -> dict:
+    """Restrict permissible scrape configuration options.
+
+    Args:
+        job: a dict containing a single Prometheus job_name
+            specification.
+
+    Returns:
+        a dictionary containing a sanitized job specification.
+    """
     return {
         "job_name": job.get("job_name"),
         "metrics_path": job.get("metrics_path", "/metrics"),
@@ -315,7 +324,7 @@ def _sanitize_scrape_configuration(job):
     }
 
 
-class TargetsChanged(EventBase):
+class TargetsChangedEvent(EventBase):
     """Event emitted when Prometheus scrape targets change."""
 
     def __init__(self, handle, relation_id):
@@ -334,7 +343,7 @@ class TargetsChanged(EventBase):
 class MonitoringEvents(ConsumerEvents):
     """Event descriptor for events raised by `MetricsEndpointConsumer`."""
 
-    targets_changed = EventSource(TargetsChanged)
+    targets_changed = EventSource(TargetsChangedEvent)
 
 
 class MetricsEndpointConsumer(ConsumerBase):
@@ -364,7 +373,7 @@ class MetricsEndpointConsumer(ConsumerBase):
 
         Anytime there are changes in relations between Prometheus
         and metrics provider charms the Prometheus charm is informed,
-        through a `TargetsChanged` event. The Prometheus charm can
+        through a `TargetsChangedEvent` event. The Prometheus charm can
         then choose to update its scrape configuration.
 
         Args:
@@ -380,7 +389,7 @@ class MetricsEndpointConsumer(ConsumerBase):
 
         When a metrics provider departs the scrape configuration
         for that provider is removed from the list of scrape jobs and
-        the Prometheus is informed through a `TargetsChanged`
+        the Prometheus is informed through a `TargetsChangedEvent`
         event.
 
         Args:
@@ -390,7 +399,7 @@ class MetricsEndpointConsumer(ConsumerBase):
         rel_id = event.relation.id
         self.on.targets_changed.emit(relation_id=rel_id)
 
-    def jobs(self):
+    def jobs(self) -> list:
         """Fetch the list of scrape jobs.
 
         Returns:
@@ -407,7 +416,7 @@ class MetricsEndpointConsumer(ConsumerBase):
 
         return scrape_jobs
 
-    def alerts(self):
+    def alerts(self) -> dict:
         """Fetch alerts for all relations.
 
         A Prometheus alert rules file consists of a list of "groups". Each
@@ -465,7 +474,7 @@ class MetricsEndpointConsumer(ConsumerBase):
 
         return alerts
 
-    def _static_scrape_config(self, relation):
+    def _static_scrape_config(self, relation) -> list:
         """Generate the static scrape configuration for a single relation.
 
         Args:
@@ -507,7 +516,7 @@ class MetricsEndpointConsumer(ConsumerBase):
 
         return labeled_job_configs
 
-    def _relation_hosts(self, relation):
+    def _relation_hosts(self, relation) -> dict:
         """Fetch host names and address of all consumer units for a single relation.
 
         Args:
@@ -518,13 +527,13 @@ class MetricsEndpointConsumer(ConsumerBase):
             A dictionary that maps unit names to unit addresses for
             the specified relation.
         """
-        hosts = {}
-        for unit in relation.units:
-            if host_address := relation.data[unit].get("prometheus_scrape_host"):
-                hosts[unit.name] = host_address
-        return hosts
+        return {
+            unit.name: relation.data[unit].get("prometheus_scrape_host")
+            for unit in relation.units
+            if relation.data[unit].get("prometheus_scrape_host")
+        }
 
-    def _labeled_static_job_config(self, job, job_name_prefix, hosts, scrape_metadata):
+    def _labeled_static_job_config(self, job, job_name_prefix, hosts, scrape_metadata) -> dict:
         """Construct labeled job configuration for a single job.
 
         Args:
@@ -546,7 +555,7 @@ class MetricsEndpointConsumer(ConsumerBase):
             for a single job.
         """
         name = job.get("job_name")
-        job_name = "{}_{}".format(job_name_prefix, name) if name else job_name_prefix
+        job_name = f"{job_name_prefix}_{name}" if name else job_name_prefix
 
         config = {"job_name": job_name, "metrics_path": job["metrics_path"]}
 
@@ -560,10 +569,15 @@ class MetricsEndpointConsumer(ConsumerBase):
             "regex": "(.*)",
         }
 
+        # label all static configs in the Prometheus job
+        # labeling inserts Juju topology information and
+        # sets a relable config for instance labels
         for static_config in static_configs:
             labels = static_config.get("labels", {}) if static_configs else {}
             all_targets = static_config.get("targets", [])
 
+            # split all targets into those which will have unit labels
+            # and those which will not
             ports = []
             unitless_targets = []
             for target in all_targets:
@@ -573,12 +587,14 @@ class MetricsEndpointConsumer(ConsumerBase):
                 else:
                     unitless_targets.append(target)
 
+            # label scrape targets that do not have unit lables
             if unitless_targets:
                 unitless_config = self._labeled_unitless_config(
                     unitless_targets, labels, scrape_metadata
                 )
                 config["static_configs"].append(unitless_config)
 
+            # label scrape targets that do have unit labels
             for host_name, host_address in hosts.items():
                 static_config = self._labeled_unit_config(
                     host_name, host_address, ports, labels, scrape_metadata
@@ -591,7 +607,7 @@ class MetricsEndpointConsumer(ConsumerBase):
 
         return config
 
-    def _set_juju_labels(self, labels, scrape_metadata):
+    def _set_juju_labels(self, labels, scrape_metadata) -> dict:
         """Create a copy of metric labels with Juju topology information.
 
         Args:
@@ -604,13 +620,13 @@ class MetricsEndpointConsumer(ConsumerBase):
             topology information with the exception of unit name.
         """
         juju_labels = labels.copy()  # deep copy not needed
-        juju_labels["juju_model"] = "{}".format(scrape_metadata["model"])
-        juju_labels["juju_model_uuid"] = "{}".format(scrape_metadata["model_uuid"])
-        juju_labels["juju_application"] = "{}".format(scrape_metadata["application"])
+        juju_labels["juju_model"] = f"{scrape_metadata['model']}"
+        juju_labels["juju_model_uuid"] = f"{scrape_metadata['model_uuid']}"
+        juju_labels["juju_application"] = f"{format(scrape_metadata['application'])}"
 
         return juju_labels
 
-    def _labeled_unitless_config(self, targets, labels, scrape_metadata):
+    def _labeled_unitless_config(self, targets, labels, scrape_metadata) -> dict:
         """Static scrape configuration for fully qualified host addresses.
 
         Fully qualified hosts are those scrape targets for which the
@@ -632,7 +648,9 @@ class MetricsEndpointConsumer(ConsumerBase):
         unitless_config = {"targets": targets, "labels": juju_labels}
         return unitless_config
 
-    def _labeled_unit_config(self, host_name, host_address, ports, labels, scrape_metadata):
+    def _labeled_unit_config(
+        self, host_name, host_address, ports, labels, scrape_metadata
+    ) -> dict:
         """Static scrape configuration for a wildcard host.
 
         Wildcard hosts are those scrape targets whose address is
@@ -655,14 +673,14 @@ class MetricsEndpointConsumer(ConsumerBase):
 
         # '/' is not allowed in Prometheus label names. It technically works,
         # but complex queries silently fail
-        juju_labels["juju_unit"] = "{}".format(host_name.replace("/", "-"))
+        juju_labels["juju_unit"] = f"{host_name.replace('/', '-')}"
 
         static_config = {"labels": juju_labels}
 
         if ports:
             targets = []
             for port in ports:
-                targets.append("{}:{}".format(host_address, port))
+                targets.append(f"{host_address}:{port}")
             static_config["targets"] = targets
         else:
             static_config["targets"] = [host_address]
@@ -779,7 +797,7 @@ class MetricsEndpointProvider(ProviderBase):
                 self._charm.model.get_binding(relation).network.bind_address
             )
 
-    def _label_alert_topology(self, rule):
+    def _label_alert_topology(self, rule) -> dict:
         """Insert juju topology labels into an alert rule.
 
         Args:
@@ -797,7 +815,7 @@ class MetricsEndpointProvider(ProviderBase):
         rule["labels"] = labels
         return rule
 
-    def _label_alert_expression(self, rule):
+    def _label_alert_expression(self, rule) -> dict:
         """Insert juju topology filters into a Prometheus alert rule.
 
         Args:
@@ -821,7 +839,7 @@ class MetricsEndpointProvider(ProviderBase):
         return rule
 
     @property
-    def _labeled_alert_groups(self):
+    def _labeled_alert_groups(self) -> list:
         """Load alert rules from rule files.
 
         All rules from files for a consumer charm are loaded into a single
@@ -860,7 +878,7 @@ class MetricsEndpointProvider(ProviderBase):
         return groups
 
     @property
-    def _scrape_jobs(self):
+    def _scrape_jobs(self) -> list:
         """Fetch list of scrape jobs.
 
         Returns:
@@ -871,15 +889,15 @@ class MetricsEndpointProvider(ProviderBase):
         return self._jobs if self._jobs else default_job
 
     @property
-    def _scrape_metadata(self):
+    def _scrape_metadata(self) -> dict:
         """Generate scrape metadata.
 
         Returns:
             Scrape configutation metadata for this metrics provider charm.
         """
         metadata = {
-            "model": "{}".format(self._charm.model.name),
-            "model_uuid": "{}".format(self._charm.model.uuid),
-            "application": "{}".format(self._charm.model.app.name),
+            "model": f"{self._charm.model.name}",
+            "model_uuid": f"{self._charm.model.uuid}",
+            "application": f"{self._charm.model.app.name}",
         }
         return metadata
