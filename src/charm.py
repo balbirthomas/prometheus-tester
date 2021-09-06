@@ -11,7 +11,7 @@ from ops.main import main
 from ops.framework import StoredState
 from ops.model import ActiveStatus, ModelError
 from ops.pebble import ConnectionError
-from charms.prometheus_k8s.v0.prometheus import MetricsEndpointProvider
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 
 logger = logging.getLogger(__name__)
 
