@@ -26,6 +26,7 @@ class PrometheusTesterCharm(CharmBase):
         self._stored.set_default(monitoring_enabled=False)
         jobs = [
             {
+                "scrape_interval": "1s",
                 "static_configs": [
                     {
                         "targets": ["*:8000"],
