@@ -34,9 +34,9 @@ class PrometheusTesterCharm(CharmBase):
                 ]
             }
         ]
-        self.prometheus = MetricsEndpointProvider(self, "metrics-endpoint",
-                                                  self.on.prometheus_tester_pebble_ready,
-                                                  jobs=jobs)
+        self.prometheus = MetricsEndpointProvider(
+            self, jobs=jobs, alert_rules_path="./src/prometheus_alert_rules"
+        )
         self.framework.observe(self.on.prometheus_tester_pebble_ready,
                                self._on_prometheus_tester_pebble_ready)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
@@ -45,7 +45,7 @@ class PrometheusTesterCharm(CharmBase):
         container = event.workload
         layer = self._tester_pebble_layer()
         container.add_layer(self._name, layer, combine=True)
-        container.autostart()
+        container.restart(self._name)
         self.unit.status = ActiveStatus()
 
     def _on_config_changed(self, event):
