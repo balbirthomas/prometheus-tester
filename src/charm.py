@@ -34,9 +34,7 @@ class PrometheusTesterCharm(CharmBase):
                 ]
             }
         ]
-        self.prometheus = MetricsEndpointProvider(
-            self, jobs=jobs, alert_rules_path="./src/prometheus_alert_rules"
-        )
+        self.prometheus = MetricsEndpointProvider(self, jobs=jobs)
         self.framework.observe(self.on.prometheus_tester_pebble_ready,
                                self._on_prometheus_tester_pebble_ready)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
