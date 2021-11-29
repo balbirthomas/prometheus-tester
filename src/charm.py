@@ -8,7 +8,7 @@ import logging
 
 from ops.charm import CharmBase
 from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus
+from ops.model import ActiveStatus, WaitingStatus
 from ops.pebble import Layer
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 
@@ -49,7 +49,7 @@ class PrometheusTesterCharm(CharmBase):
     def _on_config_changed(self, event):
         container = self.unit.get_container(self._name)
         if not container.can_connect():
-            self.unit.status = BlockedStatus("Waiting for Pebble ready")
+            self.unit.status = WaitingStatus("Waiting for Pebble ready")
             event.defer()
             return
 
